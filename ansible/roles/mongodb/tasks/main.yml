@@ -1,0 +1,152 @@
+---
+- name: Create apt keyring directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Download MongoDB GPG key
+  ansible.builtin.get_url:
+    url: "https://www.mongodb.org/static/pgp/server-{{ mongodb_version }}.asc"
+    dest: "/etc/apt/keyrings/mongodb-server-{{ mongodb_version }}.asc"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Add MongoDB apt repository
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [arch=amd64 signed-by=/etc/apt/keyrings/mongodb-server-{{ mongodb_version }}.asc]
+      https://repo.mongodb.org/apt/ubuntu
+      {{ ansible_distribution_release }}/mongodb-org/{{ mongodb_version }}
+      multiverse
+    filename: "mongodb-org-{{ mongodb_version }}"
+    state: present
+    update_cache: true
+
+- name: Install MongoDB server and shell
+  ansible.builtin.apt:
+    name: mongodb-org
+    state: present
+    update_cache: true
+
+- name: Configure mongod securely
+  ansible.builtin.template:
+    src: mongod.conf.j2
+    dest: /etc/mongod.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart mongod
+
+- name: Create the mongod systemd drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/mongod.service.d
+    state: directory
+    mode: "0755"
+
+- name: Workaround for MongoDB on kernel 6.19+ (SERVER-121912)
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/mongod.service.d/rseq.conf
+    content: |
+      [Service]
+      Environment=GLIBC_TUNABLES=glibc.pthread.rseq=1
+    owner: root
+    group: root
+    mode: "0644"
+  register: mongo_rseq
+
+- name: Reload systemd after adding the override
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: mongo_rseq is changed
+
+- name: Enable and start MongoDB
+  ansible.builtin.service:
+    name: mongod
+    state: started
+    enabled: true
+
+- name: Apply MongoDB configuration changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for MongoDB to accept local connections
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ mongodb_port }}"
+    timeout: 60
+
+- name: Check whether MongoDB admin authentication works
+  ansible.builtin.shell: |
+    mongosh --quiet \
+      --host 127.0.0.1 \
+      --port {{ mongodb_port }} \
+      --username "$MONGO_ADMIN_USER" \
+      --password "$MONGO_ADMIN_PASSWORD" \
+      --authenticationDatabase admin \
+      --eval 'if (db.runCommand({connectionStatus: 1}).ok !== 1) { quit(1); }'
+  args:
+    executable: /bin/bash
+  environment:
+    MONGO_ADMIN_USER: "{{ mongodb_admin_user }}"
+    MONGO_ADMIN_PASSWORD: "{{ vault_mongodb_admin_password }}"
+  register: mongodb_admin_login
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: Create MongoDB admin user using localhost exception
+  ansible.builtin.shell: |
+    mongosh --quiet \
+      --host 127.0.0.1 \
+      --port {{ mongodb_port }} \
+      --eval '
+        const adminDb = db.getSiblingDB("admin");
+        adminDb.createUser({
+          user: process.env.MONGO_ADMIN_USER,
+          pwd: process.env.MONGO_ADMIN_PASSWORD,
+          roles: [{ role: "root", db: "admin" }]
+        });
+      '
+  args:
+    executable: /bin/bash
+  environment:
+    MONGO_ADMIN_USER: "{{ mongodb_admin_user }}"
+    MONGO_ADMIN_PASSWORD: "{{ vault_mongodb_admin_password }}"
+  when: mongodb_admin_login.rc != 0
+  no_log: true
+
+- name: Create application database user with least privilege
+  ansible.builtin.shell: |
+    mongosh --quiet \
+      --host 127.0.0.1 \
+      --port {{ mongodb_port }} \
+      --username "$MONGO_ADMIN_USER" \
+      --password "$MONGO_ADMIN_PASSWORD" \
+      --authenticationDatabase admin \
+      --eval '
+        const appDb = db.getSiblingDB(process.env.MONGO_APP_DATABASE);
+        if (appDb.getUser(process.env.MONGO_APP_USER) === null) {
+          appDb.createUser({
+            user: process.env.MONGO_APP_USER,
+            pwd: process.env.MONGO_APP_PASSWORD,
+            roles: [{ role: "readWrite", db: process.env.MONGO_APP_DATABASE }]
+          });
+          print("created");
+        } else {
+          print("exists");
+        }
+      '
+  args:
+    executable: /bin/bash
+  environment:
+    MONGO_ADMIN_USER: "{{ mongodb_admin_user }}"
+    MONGO_ADMIN_PASSWORD: "{{ vault_mongodb_admin_password }}"
+    MONGO_APP_USER: "{{ mongodb_app_user }}"
+    MONGO_APP_PASSWORD: "{{ vault_mongodb_app_password }}"
+    MONGO_APP_DATABASE: "{{ mongodb_app_database }}"
+  register: mongodb_app_user_result
+  changed_when: "'created' in mongodb_app_user_result.stdout"
+  no_log: true

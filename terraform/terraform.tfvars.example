@@ -1,0 +1,14 @@
+aws_region  = "ap-south-1"
+project_name = "travelmemory"
+environment  = "dev"
+owner        = "YOUR_NAME"
+
+# Run: curl -s https://checkip.amazonaws.com
+ssh_allowed_cidr = "YOUR.PUBLIC.IP.ADDRESS/32"
+
+# Use absolute paths, not ~
+public_key_path  = "/home/YOUR_LINUX_USERNAME/.ssh/travelmemory.pub"
+private_key_path = "/home/YOUR_LINUX_USERNAME/.ssh/travelmemory"
+
+web_instance_type = "t3.small"
+db_instance_type  = "t3.micro"

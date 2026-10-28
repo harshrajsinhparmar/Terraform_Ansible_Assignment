@@ -1,0 +1,92 @@
+---
+- name: Configure SSH hardening settings
+  ansible.builtin.template:
+    src: sshd-hardening.conf.j2
+    dest: /etc/ssh/sshd_config.d/99-travelmemory-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "/usr/sbin/sshd -t -f %s"
+  notify: Restart SSH
+
+- name: Lock root account password
+  ansible.builtin.user:
+    name: root
+    password_lock: true
+
+- name: Configure fail2ban jail
+  ansible.builtin.template:
+    src: jail.local.j2
+    dest: /etc/fail2ban/jail.local
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart fail2ban
+
+- name: Configure unattended security upgrades
+  ansible.builtin.template:
+    src: 20auto-upgrades.j2
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Allow SSH to web server only from learner IP
+  community.general.ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+    from_ip: "{{ admin_ssh_cidr }}"
+  when: "'web' in group_names"
+
+- name: Allow HTTP to web server
+  community.general.ufw:
+    rule: allow
+    port: "80"
+    proto: tcp
+    from_ip: any
+  when: "'web' in group_names"
+
+- name: Allow HTTPS to web server
+  community.general.ufw:
+    rule: allow
+    port: "443"
+    proto: tcp
+    from_ip: any
+  when: "'web' in group_names"
+
+- name: Allow SSH to DB server only from web private IP
+  community.general.ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+    from_ip: "{{ web_private_ip }}/32"
+  when: "'db' in group_names"
+
+- name: Allow MongoDB only from web private IP
+  community.general.ufw:
+    rule: allow
+    port: "27017"
+    proto: tcp
+    from_ip: "{{ web_private_ip }}/32"
+  when: "'db' in group_names"
+
+- name: Set UFW default incoming policy to deny
+  community.general.ufw:
+    direction: incoming
+    policy: deny
+
+- name: Set UFW default outgoing policy to allow
+  community.general.ufw:
+    direction: outgoing
+    policy: allow
+
+- name: Enable UFW
+  community.general.ufw:
+    state: enabled
+
+- name: Ensure fail2ban is enabled and running
+  ansible.builtin.service:
+    name: fail2ban
+    state: started
+    enabled: true

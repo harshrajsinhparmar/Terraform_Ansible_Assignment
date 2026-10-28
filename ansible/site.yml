@@ -1,0 +1,48 @@
+---
+- name: Baseline packages and security hardening
+  hosts: all
+  become: true
+
+  roles:
+    - common
+    - hardening
+
+- name: Install and secure MongoDB
+  hosts: db
+  become: true
+
+  roles:
+    - mongodb
+
+- name: Deploy TravelMemory web tier
+  hosts: web
+  become: true
+
+  roles:
+    - webserver
+
+- name: Verify end-to-end deployment
+  hosts: web
+  become: true
+
+  tasks:
+    - name: Verify Express health endpoint through Nginx
+      ansible.builtin.uri:
+        url: "http://127.0.0.1/hello"
+        status_code: 200
+        return_content: true
+      register: hello_result
+
+    - name: Verify trip API through Nginx
+      ansible.builtin.uri:
+        url: "http://127.0.0.1/trip"
+        status_code: 200
+        return_content: true
+      register: trip_result
+
+    - name: Show verification result
+      ansible.builtin.debug:
+        msg:
+          - "Health endpoint status: {{ hello_result.status }}"
+          - "Trip endpoint status: {{ trip_result.status }}"
+          - "Application URL: http://{{ web_public_ip }}"

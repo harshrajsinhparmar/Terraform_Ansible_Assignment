@@ -1,0 +1,32 @@
+---
+- name: Update apt cache and safely upgrade packages
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+    upgrade: safe
+  register: apt_upgrade
+  retries: 5
+  delay: 10
+  until: apt_upgrade is succeeded
+
+- name: Install common packages
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - fail2ban
+      - git
+      - gnupg
+      - python3-debian
+      - rsync
+      - ufw
+      - unattended-upgrades
+    state: present
+
+- name: Set server timezone
+  community.general.timezone:
+    name: "{{ common_timezone }}"
+
+- name: Set hostname from inventory hostname
+  ansible.builtin.hostname:
+    name: "{{ inventory_hostname }}"

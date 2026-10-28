@@ -1,0 +1,25 @@
+---
+app_name: travelmemory
+
+app_repo_url: "https://github.com/UnpredictablePrashant/TravelMemory.git"
+app_repo_version: "main"
+
+app_root: "/opt/travelmemory"
+app_user: "travelmemory"
+app_group: "travelmemory"
+app_home: "/var/lib/travelmemory"
+
+backend_port: 3001
+
+mongodb_version: "8.0"
+mongodb_port: 27017
+mongodb_admin_user: "tm_admin"
+mongodb_app_user: "travelmemory_app"
+mongodb_app_database: "travelmemory"
+
+# Values come from the Terraform-generated inventory.
+mongodb_private_ip: "{{ hostvars[groups['db'][0]].private_ip }}"
+web_private_ip: "{{ hostvars[groups['web'][0]].private_ip }}"
+web_public_ip: "{{ hostvars[groups['web'][0]].ansible_host }}"
+
+common_timezone: "Asia/Kolkata"

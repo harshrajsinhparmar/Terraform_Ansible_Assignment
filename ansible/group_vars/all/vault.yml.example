@@ -1,0 +1,6 @@
+---
+# Generate safe values with:
+# openssl rand -hex 24
+
+vault_mongodb_admin_password: "REPLACE_WITH_RANDOM_HEX_PASSWORD"
+vault_mongodb_app_password: "REPLACE_WITH_RANDOM_HEX_PASSWORD"

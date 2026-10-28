@@ -1,0 +1,25 @@
+# Terraform
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/tfplan
+terraform/backend.hcl
+terraform/terraform.tfvars
+terraform/crash.log
+
+# Generated Ansible inventory
+ansible/inventory/hosts.ini
+
+# Vault password only - never commit this
+ansible/.vault_pass
+
+# SSH keys and secrets
+*.pem
+*.key
+*.env
+.env
+
+# OS/editor files
+.DS_Store
+.vscode/
+.idea/
